@@ -135,7 +135,11 @@ def main():
             data[key] = Tensor(atts[key])
             data[key].requires_grad = False
 
-    # data split
+    ############################################################
+    ### data-split, negative-sampling
+    ############################################################
+
+    # split target network
     data = split_link_prediction_datas(
         data, nodes, edge_symbols, weighted_edge_names, conf
     )
