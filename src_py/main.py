@@ -184,6 +184,10 @@ def main():
 
     describe_dataset(data, nodes, edges, edge_symbols, conf)
 
+    ############################################################
+    ### Model Training (link prediction task)
+    ############################################################
+
 
 if __name__ == "__main__":
     main()
