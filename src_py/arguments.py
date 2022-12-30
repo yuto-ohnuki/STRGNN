@@ -1,4 +1,5 @@
 import argparse
+import torch
 
 
 def get_args():
@@ -35,8 +36,47 @@ def get_args():
     parser.add_argument("--eps", "-eps", type=float, default=1e-6)
     parser.add_argument("--epoch_num", "-e", type=int, default=5000)
     parser.add_argument("--verbose", "-v", type=int, default=10)
+    parser.add_argument("--save_model", "-save", type=str, default=False)
     args = parser.parse_args()
+    check_and_update_args(args)
     return args
+
+
+def check_and_update_args(args):
+    # check: target network
+    assert (
+        args.target_network == "drug_disease" or args.target_network == "drug_protein"
+    )
+    args.source_node, args.target_node = args.target_network.split("_")
+
+    # check: device
+    args.device = torch.device(
+        "cuda:{}".format(args.cuda) if torch.cuda.is_available() else "cpu"
+    )
+
+    # update: order of interaction networks to be trained
+    args.network_order = [
+        "disease_disease",
+        "disease_metabolite",
+        "disease_mirna",
+        "disease_mrna_up",
+        "disease_mrna_down",
+        "disease_protein",
+        "protein_protein",
+        "protein_mirna",
+        "protein_mrna",
+        "mrna_mrna",
+        "mrna_mirna",
+        "mirna_mirna",
+        "drug_mirna",
+        "drug_mrna_up",
+        "drug_mrna_down",
+        "drug_metabolite_up",
+        "drug_metabolite_down",
+        "drug_protein",
+        "drug_drug",
+    ]
+    assert args.target_network not in args.network_order
 
 
 def main():

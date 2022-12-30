@@ -42,6 +42,12 @@ def count_unique_ids(var):
             raise Exception("Dtype error: Node file")
 
 
+def get_initial_feat(num_nodes, dim):
+    x = Tensor(num_nodes, dim)
+    x = x.data.normal_(std=1 / np.sqrt(dim))
+    return x
+
+
 def load_nodes(path, keys):
     nodes = dict()
     for key in keys:

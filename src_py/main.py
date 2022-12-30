@@ -33,7 +33,7 @@ def main():
     conf = get_args()
 
     ############################################################
-    ### load multimodal network dataset
+    ### load datasets
     ############################################################
 
     # load nodes
@@ -108,6 +108,35 @@ def main():
     atts = load_attributes(
         nodes, att_names, node_nums, MXLEN=nodes["protein"].SeqLength.max()
     )
+
+    ############################################################
+    ### construct multimodal network
+    ############################################################
+    data = Data.from_dict(dict())
+
+    # load node counts
+    for node in node_symbols.keys():
+        data["n_{}".format(node)] = node_nums[node]
+
+    # load edge indexes
+    for network in edge_symbols.keys():
+        data["{}_edge_index".format(edge_symbols[network])] = edges[network]
+
+    # load edge weights
+    for network in weighted_edge_names:
+        data["{}_edge_weight".format(network)] = edge_weights[network]
+
+    # initial features
+    for node in node_names:
+        if node not in att_symbols.keys():
+            data["{}_feat".format(node_symbols[node])] = get_initial_feat(
+                data["n_{}".format(node)], conf.emb_dim
+            )
+
+        else:
+            key = att_symbols[node]
+            data[key] = Tensor(atts[key])
+            data[key].requires_grad = False
 
 
 if __name__ == "__main__":
