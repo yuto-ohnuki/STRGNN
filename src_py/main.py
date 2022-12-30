@@ -20,6 +20,7 @@ from torch_geometric.data import Data
 from torch_geometric.utils import add_self_loops, degree
 
 from utils import *
+from arguments import *
 
 
 def main():
@@ -27,10 +28,14 @@ def main():
     dataset_path = os.path.join(get_parent_path(cur_path, 1), "Dataset")
 
     ############################################################
+    ### configuration
+    ############################################################
+    conf = get_args()
+
+    ############################################################
     ### load multimodal network dataset
     ############################################################
 
-    print("nodes start")
     # load nodes
     node_names = ["drug", "disease", "protein", "mrna", "mirna", "metabolite"]
     node_symbols = {
@@ -45,7 +50,6 @@ def main():
     nodes = load_nodes(dataset_path, node_names)
     node_nums = {node: count_unique_ids(nodes[node]) for node in node_names}
 
-    print("edges start")
     # load edges
     unweighted_edge_names = [
         "disease_metabolite",
@@ -98,14 +102,12 @@ def main():
         dataset_path, unweighted_edge_names, weighted_edge_names
     )
 
-    print("embs start")
     # load attributes
     att_names = ["drug_ecfp", "protein_seq"]
     att_symbols = {"drug": "drug_ecfp", "protein": "protein_seq"}
     atts = load_attributes(
         nodes, att_names, node_nums, MXLEN=nodes["protein"].SeqLength.max()
     )
-    print("fin")
 
 
 if __name__ == "__main__":
