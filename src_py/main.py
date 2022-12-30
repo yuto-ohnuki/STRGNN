@@ -144,6 +144,46 @@ def main():
         data, nodes, edge_symbols, weighted_edge_names, conf
     )
 
+    # negative sampling for valid/test datas
+    raw_used = get_pair(data["{}_edge_index".format(edge_symbols[conf.target_network])])
+    data.valid_neg_edge_index = []
+    for i in range(conf.cv):
+        valid_neg_edge_index = negative_sampling_edge_index(
+            data.valid_edge_index[i],
+            data["n_{}".format(conf.source_node)],
+            data["n_{}".format(conf.target_node)],
+            raw_used,
+            data.internal_src_index,
+            data.internal_tar_index,
+            conf,
+        )
+        data.valid_neg_edge_index.append(valid_neg_edge_index)
+
+    else:
+        data.test_neg_edge_index = negative_sampling_edge_index(
+            data.test_edge_index,
+            data["n_{}".format(conf.source_node)],
+            data["n_{}".format(conf.target_node)],
+            raw_used,
+            data.internal_src_index,
+            data.internal_tar_index,
+            conf,
+        )
+
+    # merge negative edges to used
+    used = []
+    for i in range(conf.cv):
+        cv_used = merge_used(raw_used, data.valid_neg_edge_index[i])
+        cv_used = merge_used(cv_used, data.test_edge_index)
+        used.append(cv_used)
+
+    # to bipartite networks
+    data = to_bipartite_network(
+        data, edge_symbols, symbol_to_nodename, weighted_edge_names, conf
+    )
+
+    describe_dataset(data, nodes, edges, edge_symbols, conf)
+
 
 if __name__ == "__main__":
     main()

@@ -1,7 +1,8 @@
-import os, sys, glob
+import os, sys, glob, copy
 import scipy.sparse as sp
 import numpy as np
 import pandas as pd
+import torch
 from tqdm import tqdm
 from torch import Tensor
 
@@ -106,8 +107,8 @@ def load_attributes(nodes, keys, nums, MXLEN=1000):
             uniq_chars = uniq_chars.union(set(list(seq)))
         for e, x in enumerate(list(uniq_chars)):
             char_to_id[x] = e
-        mat = np.empty((len(seq), len(char_to_id), prot_dim))
-        for i, s in enumerate(tqdm(seq)):
+        mat = np.empty((len(seqs), len(char_to_id), prot_dim))
+        for i, s in enumerate(tqdm(seqs)):
             if len(s) > MXLEN:
                 s = s[:MXLEN]
             for j, c in enumerate(s):
@@ -115,3 +116,146 @@ def load_attributes(nodes, keys, nums, MXLEN=1000):
         atts["protein_seq"] = mat
 
     return atts
+
+
+def negative_sampling_edge_index(
+    pos_edge_index, n_src, n_tar, used, src_index, tar_index, conf
+):
+    pos = pos_edge_index.clone().cpu().numpy()
+    src_set = set(src_index)
+    tar_set = set(tar_index)
+    neg_srcs = [0] * pos.shape[1]
+    neg_tars = [0] * pos.shape[1]
+
+    # choice random source nodes
+    for i, tar in enumerate(pos[1]):
+        while True:
+            neg_src = np.random.randint(0, n_src)
+            if neg_src not in src_set:
+                continue
+            if not {(neg_src, tar)} <= used:
+                break
+        neg_srcs[i] = neg_src
+
+    # choice random target nodes
+    for i, src in enumerate(pos[0]):
+        while True:
+            neg_tar = np.random.randint(0, n_tar)
+            if neg_tar not in tar_set:
+                continue
+            if not {(src, neg_tar)} <= used:
+                break
+        neg_tars[i] = neg_tar
+
+    neg_edge = Tensor(
+        np.concatenate(
+            [np.array([pos[0], neg_tars]), np.array([neg_srcs, pos[1]])], axis=1
+        )
+    ).long()
+    return neg_edge
+
+
+def merge_used(used, edge_index):
+    ret = copy.deepcopy(used)
+    neg_pair = get_pair(edge_index)
+    ret = union_set(ret, neg_pair)
+    return ret
+
+
+def to_undirected(edge_index, n_src):
+    edge_index[1] += n_src
+    rev_edge_index = edge_index.clone()
+    rev_edge_index[0, :], rev_edge_index[1, :] = edge_index[1, :], edge_index[0, :]
+    return torch.cat([edge_index, rev_edge_index], dim=1)
+
+
+def to_bipartite_network(
+    data, edge_symbols, symbol_to_nodename, weighted_edge_names, conf
+):
+    for network, symbol in edge_symbols.items():
+        src, tar, *diff = symbol.split("_")
+        if network == conf.target_network:
+            continue
+
+        elif src == tar:
+            continue
+
+        else:
+            assert src != tar
+            data["{}_edge_index".format(symbol)] = to_undirected(
+                data["{}_edge_index".format(symbol)],
+                data["n_{}".format(symbol_to_nodename[src])],
+            )
+            if network in weighted_edge_names:
+                data["{}_edge_weight".format(symbol)] = data[
+                    "{}_edge_weight".format(symbol)
+                ].repeat(2)
+    return data
+
+
+def describe_dataset(data, nodes, edges, edge_symbols, conf):
+
+    line = "#" * 40
+    src_node, tar_node = conf.target_network.split("_")
+    print(line)
+
+    # Task type
+    task_type = conf.task_type
+    print("Task  : {}".format(task_type))
+    print("Target: {}".format(conf.target_network))
+    print(line)
+
+    # Dataset
+    print("Node counts >>")
+    for key in nodes:
+        print("\t{}: {}".format(key, data["n_{}".format(key)]))
+
+    print("\nEdge counts >>")
+    for key in edges:
+        src, tar, *diff = key.split("_")
+        if src == tar:
+            print(
+                "\t{}: {}".format(
+                    key, data["{}_edge_index".format(edge_symbols[key])].shape[1]
+                )
+            )
+        else:
+            print(
+                "\t{}: {}".format(
+                    key, data["{}_edge_index".format(edge_symbols[key])].shape[1] // 2
+                )
+            )
+    print(line)
+
+    # Link prediction
+    print("Node splits >> ")
+    print("\tInternal {} nodes: {}".format(src_node, data.internal_src_index.shape[0]))
+    print(
+        "\tInternal {} nodes: {}\n".format(tar_node, data.internal_tar_index.shape[0])
+    )
+    print("\tExternal {} nodes: {}".format(src_node, data.external_src_index.shape[0]))
+    print("\tExternal {} nodes: {}".format(tar_node, data.external_tar_index.shape[0]))
+    print(line)
+
+    # Train, Valid, Test
+    print("Edge splits >> ")
+    for i in range(conf.cv):
+        print(
+            "\tTrain (cv-{}): {} >> {}".format(
+                i, "INT", data.train_edge_index[i].shape[1]
+            )
+        )
+        print(
+            "\tValid (cv-{}): {} >> {}\n".format(
+                i,
+                "INT" if task_type == "transductive" else "EXT",
+                data.valid_edge_index[i].shape[1],
+            )
+        )
+    print(
+        "\tTest: {} >> {}".format(
+            "INT" if task_type == "transductive" else "EXT",
+            data.test_edge_index.shape[1],
+        )
+    )
+    print(line)
