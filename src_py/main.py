@@ -21,6 +21,7 @@ from torch_geometric.utils import add_self_loops, degree
 
 from utils import *
 from arguments import *
+from data_split import *
 
 
 def main():
@@ -33,8 +34,9 @@ def main():
     conf = get_args()
 
     ############################################################
-    ### load datasets
+    ### load multimodal network datasets
     ############################################################
+    data = Data.from_dict(dict())
 
     # load nodes
     node_names = ["drug", "disease", "protein", "mrna", "mirna", "metabolite"]
@@ -109,11 +111,6 @@ def main():
         nodes, att_names, node_nums, MXLEN=nodes["protein"].SeqLength.max()
     )
 
-    ############################################################
-    ### construct multimodal network
-    ############################################################
-    data = Data.from_dict(dict())
-
     # load node counts
     for node in node_symbols.keys():
         data["n_{}".format(node)] = node_nums[node]
@@ -124,7 +121,7 @@ def main():
 
     # load edge weights
     for network in weighted_edge_names:
-        data["{}_edge_weight".format(network)] = edge_weights[network]
+        data["{}_edge_weight".format(edge_symbols[network])] = edge_weights[network]
 
     # initial features
     for node in node_names:
@@ -137,6 +134,11 @@ def main():
             key = att_symbols[node]
             data[key] = Tensor(atts[key])
             data[key].requires_grad = False
+
+    # data split
+    data = split_link_prediction_datas(
+        data, nodes, edge_symbols, weighted_edge_names, conf
+    )
 
 
 if __name__ == "__main__":
