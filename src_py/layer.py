@@ -55,10 +55,3 @@ class DropEdge(nn.Module):
             Y = cat_drop_edge.T.detach().cpu().numpy()
             edge_index = Tensor(self.dropedge(X, Y)).long()
         return edge_index
-
-
-class MyGAE(nn.Module):
-    def __init__(self, encoder, decoder):
-        super(MyGAE, self).__init__()
-        self.encoder = encoder
-        self.decoder = decoder
