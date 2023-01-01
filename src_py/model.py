@@ -4,6 +4,7 @@ import torch.nn as nn
 from torch import Tensor
 from torch_geometric.data import Data
 
+from utils import *
 from layer import *
 
 
@@ -61,7 +62,10 @@ class MyEncoder(nn.Module):
                 pass
             elif src == tar:
                 self.net_encoder[symbol] = MonoEncoder(
-                    conf.emb_dim, data["n_{}".format(src)], self.dropout_ratio
+                    conf.emb_dim,
+                    data["n_{}".format(src)],
+                    self.dropout_ratio,
+                    self.route,
                 )
             else:
                 self.net_encoder[symbol] = BipartiteEncoder(
@@ -69,7 +73,8 @@ class MyEncoder(nn.Module):
                     data["n_{}".format(src)],
                     data["n_{}".format(tar)],
                     self.dropout_ratio,
-                    conf.device,
+                    self.device,
+                    self.route,
                 )
 
         # others
@@ -152,12 +157,38 @@ class MyDecoder(nn.Module):
         else:
             raise Exception("Decoder type error")
 
-    def forward(self):
-        pass
+    def forward(self, z_src, z_tar, edge_index):
+        out = self.decoder(z_src, z_tar, edge_index)
+        return out
 
 
 class STRGNN(nn.Module):
-    def __init__(self, encoder, decoder):
+    def __init__(self, data, nsymbols, esymbols, weighted_networks, attributes, conf):
         super(STRGNN, self).__init__()
-        self.encoder = encoder
-        self.decoder = decoder
+        self.encoder = MyEncoder(
+            data, nsymbols, esymbols, weighted_networks, attributes, conf
+        )
+        self.decoder = MyDecoder(conf)
+        self.n_src = data["n_{}".format(conf.source_node)]
+        self.n_tar = data["n_{}".format(conf.target_node)]
+        self.src_symbol = nsymbols[conf.source_node]
+        self.tar_symbol = nsymbols[conf.target_node]
+        self.internal_src_index = data.internal_src_index
+        self.internal_tar_index = data.internal_tar_index
+        self.device = conf.device
+
+    def forward(self, feat, pos_edge_index, neg_edge_index):
+
+        ret_feat = self.encoder(feat)
+        pos_score = self.decoder(
+            ret_feat["{}_feat".format(self.src_symbol)],
+            ret_feat["{}_feat".format(self.tar_symbol)],
+            pos_edge_index,
+        )
+        neg_score = self.decoder(
+            ret_feat["{}_feat".format(self.src_symbol)],
+            ret_feat["{}_feat".format(self.tar_symbol)],
+            neg_edge_index,
+        )
+
+        return pos_score, neg_score

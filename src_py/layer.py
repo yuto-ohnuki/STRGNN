@@ -5,6 +5,9 @@ import torch.nn as nn
 import torch.functional as F
 from torch import Tensor
 
+from torch_geometric.nn.conv import GCNConv, MessagePassing
+from torch_geometric.utils import add_self_loops, degree
+from torch_geometric.data import Data
 
 EPS = 1e-6
 
@@ -150,32 +153,126 @@ class AminoSeqEncoder(nn.Module):
 
 
 class MonoEncoder(nn.Module):
-    def __init__(self):
+    def __init__(self, dim, n_src, dropout_ratio, route_type):
         super(MonoEncoder, self).__init__()
+        self.in_dim = dim
+        self.out_dim = dim
+        self.route_type = route_type
+        self.fnn_layer = nn.Sequential(
+            nn.Linear(self.in_dim, self.out_dim),
+            nn.LeakyReLU(inplace=True),
+            nn.Dropout(dropout_ratio),
+        )
+        self.gnn_layer = GCNConv(self.in_dim, self.out_dim)
+        self.node_norm = NodeNorm()
 
-    def forward(self):
-        pass
+    def forward(self, x, edge_index, edge_weight=None):
+        if self.route == "GNN":
+            x = self.gnn_layer(x, edge_index, edge_weight=edge_weight)
+        elif self.route == "FNN":
+            x = self.fnn_layer(x)
+        elif self.type == "SKIP":
+            x_s = torch.clone(x)
+            x = self.gnn_layer(x, edge_index, edge_weight=edge_weight)
+            x = x + x_s
+        elif self.type == "MIX":
+            x_s = torch.clone(x)
+            x = self.gnn_layer(x, edge_index, edge_weight)
+            x_s = self.fnn_layer(x_s)
+            x = x + x_s
+        else:
+            raise Exception("Encoder type error")
+
+        x = self.node_norm(x)
+        x = F.leaky_relu(x, inplace=True)
+        return x
 
 
 class BipartiteEncoder(nn.Module):
-    def __init__(self):
+    def __init__(self, dim, n_src, n_tar, dropout_ratio, device, route_type):
         super(BipartiteEncoder, self).__init__()
+        self.device = device
+        self.in_dim = dim
+        self.out_dim = dim
+        self.n_src = n_src
+        self.n_tar = n_tar
+        self.fnn_layer = nn.Sequential(
+            nn.Linear(self.in_dim, self.in_dim),
+            nn.LeakyReLU(inplace=True),
+            nn.Dropout(dropout_ratio),
+        )
+        self.gnn_layer = GCNConv(self.in_dim, self.out_dim)
+        self.node_norm = NodeNorm()
 
-    def forward(self):
-        pass
+    def forward(self, x_src, x_tar, edge_index, edge_weight):
+
+        x = torch.cat([x_src, x_tar], axis=0).to(self.device)
+
+        if self.route == "GNN":
+            x = self.gnn_layer(x, edge_index, edge_weight=edge_weight)
+        elif self.route == "FNN":
+            x = self.fnn_layer(x)
+        elif self.route == "SKIP":
+            x_s = torch.clone(x)
+            x = self.gnn_layer(x, edge_index, edge_weight=edge_weight)
+            x = x + x_s
+        elif self.route == "MIX":
+            x_s = torch.clone(x)
+            x = self.gnn_layer(x, edge_index, edge_weight)
+            x_s = self.fnn_layer(x_s)
+            x = x + x_s
+        else:
+            raise Exception("Encoder type error")
+
+        x = self.node_norm(x)
+        x = F.leaky_relu(x, inplace=True)
+        x_src = x[: self.n_src, :]
+        x_tar = x[self.n_src :, :]
+        return x_src, x_tar
 
 
 class MLPDecoder(nn.Module):
-    def __init__(self, dec_type, in_dim, dropout_ratio):
+    def __init__(self, dec_type, dim, dropout_ratio):
         super(MLPDecoder, self).__init__()
+        self.dec_type = dec_type
+        if self.dec_type == "CAT":
+            self.in_dim = dim * 2
+        elif self.dec_type == "MUL":
+            self.in_dim = dim
+        else:
+            raise Exception("Decoder type error")
+        self.fc1 = nn.Sequential(
+            nn.Linear(self.in_dim, self.in_dim // 2),
+            nn.LeakyReLU(inplace=True),
+            nn.Dropout(dropout_ratio),
+        )
+        self.fc2 = nn.Sequential(
+            nn.Linear(self.in_dim // 2, self.in_dim // 4),
+            nn.LeakyReLU(inplace=True),
+            nn.Dropout(dropout_ratio),
+        )
+        self.fc3 = nn.Sequential(nn.Linear(self.in_dim // 4, 1), nn.Sigmoid())
 
-    def forward(self):
-        pass
+    def forward(self, z_src, z_tar, edge_index):
+        if self.dec_type == "CAT":
+            z = torch.cat([z_src[edge_index[0]], z_tar[edge_index[1]]], dim=1)
+        elif self.dec_type == "MUL":
+            z = torch.mul(z_src[edge_index[0]], z_tar[edge_index[1]])
+        else:
+            raise Exception("Decoder type error")
+        z = self.fc1(z)
+        z = F.normalize(z, p=2, dim=-1)
+        z = self.fc2(z)
+        z = F.normalize(z, p=2, dim=-1)
+        z = self.fc3(z)
+        return z
 
 
 class IPDDecoder(nn.Module):
     def __init__(self):
         super(IPDDecoder, self).__init__()
 
-    def forward(self):
-        pass
+    def forward(self, z_src, z_tar, edge_index):
+        z = (z_src[edge_index[0]] * z_tar[edge_index[1]]).sum(dim=1)
+        z = torch.sigmoid(z)
+        return z
