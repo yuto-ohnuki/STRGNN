@@ -6,6 +6,8 @@ import torch
 from tqdm import tqdm
 from torch import Tensor
 
+from metrics import *
+
 
 def get_parent_path(pth, depth=1):
     for _ in range(depth):
@@ -259,3 +261,108 @@ def describe_dataset(data, nodes, edges, edge_symbols, conf):
         )
     )
     print(line)
+
+
+def train(model, optimizer, feat, pos_edge_index, neg_edge_index, conf):
+    model.train()
+    optimizer.zero_grad()
+    ret_feat, pos_score, neg_score = model.encoder(feat, pos_edge_index, neg_edge_index)
+
+    pos_target = torch.ones(pos_score.shape[0])
+    neg_target = torch.zeros(neg_score.shape[0])
+
+    score = torch.cat([pos_score, neg_score])
+    target = torch.cat([pos_target, neg_target])
+
+    loss = (
+        -torch.log(pos_score + conf.eps).mean()
+        - torch.log(1 - neg_score + conf.eps).mean()
+    )
+
+    if conf.norm_lambda != 0:
+        if conf.encoder_type in ["MIX", "NN"]:
+            l1_fnn = torch.sum(
+                Tensor(
+                    [
+                        torch.norm(
+                            model.encoder.net_encoder[key].fc[0].weight, conf.reg_type
+                        )
+                        * conf.norm_lambda
+                        for key in model.encoder.net_encoder.keys()
+                    ]
+                )
+            )
+            loss += l1_fnn
+        if conf.encoder_type in ["MIX", "GNN", "SKIP"]:
+            l1_gnn = torch.sum(
+                Tensor(
+                    [
+                        torch.norm(
+                            model.encoder.net_encoder[key].conv.weight, conf.reg_type
+                        )
+                        * conf.norm_lambda
+                        for key in model.encoder.net_encoder.keys()
+                    ]
+                )
+            )
+            loss += l1_gnn
+
+    loss.backward()
+    optimizer.step()
+
+    metrics = evaluation(score, target)
+    loss = loss.item()
+
+    return ret_feat, loss, metrics
+
+
+def valid_and_test(model, feat, pos_edge_index, neg_edge_index, conf):
+    model.eval()
+    z_src = feat["{}_feat".format(conf.source_node)]
+    z_tar = feat["{}_feat".format(conf.target_node)]
+    pos_score = model.decoder(z_src, z_tar, pos_edge_index)
+    neg_score = model.decoder(z_src, z_tar, neg_edge_index)
+
+    pos_target = torch.ones(pos_score.shape[0])
+    neg_target = torch.zeros(neg_score.shape[0])
+
+    score = torch.cat([pos_score, neg_score])
+    target = torch.cat([pos_target, neg_target])
+
+    loss = (
+        -torch.log(pos_score + conf.eps).mean()
+        - torch.log(1 - neg_score + conf.eps).mean()
+    )
+
+    if conf.norm_lambda != 0:
+        if conf.encoder_type in ["MIX", "NN"]:
+            l1_fnn = torch.sum(
+                Tensor(
+                    [
+                        torch.norm(
+                            model.encoder.net_encoder[key].fc[0].weight, conf.reg_type
+                        )
+                        * conf.norm_lambda
+                        for key in model.encoder.net_encoder.keys()
+                    ]
+                )
+            )
+            loss += l1_fnn
+        if conf.encoder_type in ["MIX", "GNN", "SKIP"]:
+            l1_gnn = torch.sum(
+                Tensor(
+                    [
+                        torch.norm(
+                            model.encoder.net_encoder[key].conv.weight, conf.reg_type
+                        )
+                        * conf.norm_lambda
+                        for key in model.encoder.net_encoder.keys()
+                    ]
+                )
+            )
+            loss += l1_gnn
+
+    metrics = evaluation(score, target)
+    loss = loss.item()
+
+    return loss, metrics

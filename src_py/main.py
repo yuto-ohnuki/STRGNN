@@ -23,7 +23,8 @@ from utils import *
 from arguments import *
 from data_split import *
 from metrics import *
-
+from layer import *
+from model import *
 
 
 def main():
@@ -112,6 +113,11 @@ def main():
     atts = load_attributes(
         nodes, att_names, node_nums, MXLEN=nodes["protein"].SeqLength.max()
     )
+    att_dims = {
+        "drug_ecfp": atts["drug_ecfp"].shape[1],
+        "protein_uniqchar": atts["protein_seq"].shape[1],
+        "protein_mxlen": atts["protein_seq"].shape[2],
+    }
 
     # load node counts
     for node in node_symbols.keys():
@@ -189,6 +195,139 @@ def main():
     ############################################################
     ### Model Training (link prediction task)
     ############################################################
+    train_losses, valid_losses = defaultdict(list), defaultdict(list)
+    train_records, valid_records = defaultdict(list), defaultdict(list)
+    loss_dicts = defaultdict(list)
+    best_records = defaultdict(list)
+    best_states = dict()
+
+    print("\t--- LINK PREDICTION TYPE: {}---".format(conf["task_type"]))
+    for cv in range(conf.cv):
+
+        """Define Model"""
+        epoch_num = 0
+        best_auprc = 0
+        model = STRGNN(
+            data, node_symbols, edge_symbols, weighted_edge_names, att_dims, conf
+        )
+        optimizer = optim.Adam(model.parameters(), lr=conf.lr)
+
+        """ Model training """
+        for epoch in range(conf.epoch_num - epoch_num):
+            time_begin = time.time()
+
+            # initial features
+            feat = {}
+            for key, value in node_symbols.items():
+                if key in att_symbols.keys():
+                    feat["{}_feat".format(value)] = data[att_symbols[key]]
+                else:
+                    feat["{}_feat".format(value)] = data["{}_feat".format(value)]
+
+            feat = Data.from_dict(feat)
+
+            pos_edge_index = data.train_edge_index[cv].clone()
+            neg_edge_index = negative_sampling_edge_index(
+                pos_edge_index,
+                data["n_{}".format(conf.source_node)],
+                data["n_{}".format(conf.target_node)],
+                used[cv],
+                data.internal_src_index,
+                data.internal_tar_index,
+                conf,
+            ).to(conf.device)
+            ret_feat, train_loss, train_metrics = train(
+                model, optimizer, feat, pos_edge_index, neg_edge_index, conf
+            )
+            train_auroc, train_auprc, train_acc = (
+                train_metrics["AUROC"],
+                train_metrics["AUPRC"],
+                train_metrics["ACC"],
+            )
+            train_records[cv].append([train_auroc, train_auprc, train_acc])
+            train_losses[cv].append(train_loss)
+            if epoch % conf.verbose == conf.verbose - 1 or epoch == 0:
+                print("Train >>", end="")
+                if epoch == 0:
+                    print(
+                        "EPOCH:{:3d}  AUROC:{:0.4f}  AUPRC:{:0.4f} ACC:{:0.4f}  TIME:{:0.2f}".format(
+                            epoch + 1,
+                            train_auroc,
+                            train_auprc,
+                            train_acc,
+                            (time.time() - time_begin),
+                        )
+                    )
+                else:
+                    print(
+                        "EPOCH:{:3d}  VALID_LOSS:{:0.4f}  AUROC:{:0.4f}  AUPRC:{:0.4f} ACC:{:0.4f}  TIME:{:0.2f}".format(
+                            epoch + 1,
+                            train_loss,
+                            train_auroc,
+                            train_auprc,
+                            train_acc,
+                            (time.time() - time_begin),
+                        )
+                    )
+
+            val_loss, val_metrics = valid_and_test(
+                model, ret_feat, data.valid_edge_index, data.valid_neg_edge_index
+            )
+            val_auroc, val_auprc, val_acc = (
+                val_metrics["AUROC"],
+                val_metrics["AUPRC"],
+                val_metrics["ACC"],
+            )
+            valid_records[cv].append([val_auroc, val_auprc, val_acc])
+            valid_losses[cv].append(val_loss)
+            if epoch % conf.verbose == conf.verbose - 1 or epoch == 0:
+                print("Valid >> ", end="")
+                if epoch == 0:
+                    print(
+                        "EPOCH:{:3d}  AUROC:{:0.4f}  AUPRC:{:0.4f} ACC:{:0.4f}  TIME:{:0.2f}".format(
+                            epoch + 1,
+                            val_auroc,
+                            val_auprc,
+                            val_acc,
+                            (time.time() - time_begin),
+                        )
+                    )
+                else:
+                    print(
+                        "EPOCH:{:3d}  VALID_LOSS:{:0.4f}  AUROC:{:0.4f}  AUPRC:{:0.4f} ACC:{:0.4f}  TIME:{:0.2f}".format(
+                            epoch + 1,
+                            val_loss,
+                            val_auroc,
+                            val_auprc,
+                            val_acc,
+                            (time.time() - time_begin),
+                        )
+                    )
+
+            """ Test and Update """
+            if val_auprc >= best_auprc:
+                best_auprc = val_auprc
+                print("\t-- UPDATE BEST MODEL --")
+                state = {
+                    "cv": cv,
+                    "epoch": epoch_num,
+                    "net": model.state_dict(),
+                    "optimizer": optimizer.state_dict(),
+                }
+                test_loss, test_metrics = valid_and_test(
+                    ret_feat, data.test_edge_index, data.test_neg_edge_index, conf
+                )
+                test_auroc, test_auprc, test_acc = (
+                    test_metrics["AUROC"],
+                    test_metrics["AUPRC"],
+                    test_metrics["ACC"],
+                )
+                best_records[cv].append(test_metrics)
+
+            epoch_num += 1
+        else:
+            """Save model"""
+            best_states[cv] = state
 
 
 if __name__ == "__main__":

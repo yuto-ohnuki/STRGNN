@@ -191,4 +191,4 @@ class STRGNN(nn.Module):
             neg_edge_index,
         )
 
-        return pos_score, neg_score
+        return ret_feat, pos_score, neg_score
