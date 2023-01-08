@@ -38,7 +38,7 @@ class MyEncoder(nn.Module):
         )
 
         # Attribute Encoder
-        self.add_encoder = nn.ModuleDict()
+        self.att_encoder = nn.ModuleDict()
         self.att_encoder["drug"] = ECFPEncoder(
             attributes["drug_ecfp"], conf.emb_dim, data["n_drug"], conf
         )

@@ -124,37 +124,42 @@ def negative_sampling_edge_index(
     pos_edge_index, n_src, n_tar, used, src_index, tar_index, conf
 ):
     pos = pos_edge_index.clone().cpu().numpy()
+    pos_pair = set([(l[0], l[1]) for l in pos.T.tolist()])
     src_set = set(src_index)
     tar_set = set(tar_index)
     neg_srcs = [0] * pos.shape[1]
     neg_tars = [0] * pos.shape[1]
 
     # choice random source nodes
-    for i, tar in enumerate(pos[1]):
-        while True:
-            neg_src = np.random.randint(0, n_src)
-            if neg_src not in src_set:
-                continue
-            if not {(neg_src, tar)} <= used:
-                break
-        neg_srcs[i] = neg_src
+    if conf.task_type == "transductive":
+        for i, tar in enumerate(pos[1]):
+            while True:
+                neg_src = np.random.randint(0, n_src)
+                if neg_src not in src_set:
+                    continue
+                if not {(neg_src, tar)} <= used:
+                    break
+            neg_srcs[i] = neg_src
 
-    # choice random target nodes
-    for i, src in enumerate(pos[0]):
-        while True:
-            neg_tar = np.random.randint(0, n_tar)
-            if neg_tar not in tar_set:
-                continue
-            if not {(src, neg_tar)} <= used:
-                break
-        neg_tars[i] = neg_tar
+        # choice random target nodes
+        for i, src in enumerate(pos[0]):
+            while True:
+                neg_tar = np.random.randint(0, n_tar)
+                if neg_tar not in tar_set:
+                    continue
+                if not {(src, neg_tar)} <= used:
+                    break
+            neg_tars[i] = neg_tar
 
-    neg_edge = Tensor(
-        np.concatenate(
-            [np.array([pos[0], neg_tars]), np.array([neg_srcs, pos[1]])], axis=1
-        )
-    ).long()
-    return neg_edge
+        neg_edge = Tensor(
+            np.concatenate(
+                [np.array([pos[0], neg_tars]), np.array([neg_srcs, pos[1]])], axis=1
+            )
+        ).long()
+        return neg_edge
+
+    else:
+        raise Exception("not implemented")
 
 
 def merge_used(used, edge_index):

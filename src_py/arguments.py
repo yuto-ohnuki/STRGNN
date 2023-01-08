@@ -10,13 +10,14 @@ def get_args():
         "-type",
         type=str,
         default="transductive",
-        choices=["transductive", "inductive"],
+        choices=["transductive", "semi-inductive", "fully-inductive"],
     )
     parser.add_argument(
         "--target_network",
         "-tg",
         type=str,
         default="drug_disease",
+        choices=["drug_disease", "drug_protein"],
         help="link prediction target network",
     )
     parser.add_argument(
