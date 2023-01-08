@@ -201,7 +201,7 @@ def main():
     best_records = defaultdict(list)
     best_states = dict()
 
-    print("\t--- LINK PREDICTION TYPE: {}---".format(conf["task_type"]))
+    print("\t--- LINK PREDICTION TYPE: {}---".format(conf.task_type))
     for cv in range(conf.cv):
 
         """Define Model"""
