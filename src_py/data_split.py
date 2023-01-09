@@ -67,7 +67,7 @@ def split_drug_protein_edges(dp_edge_index, train_ratio):
     return train_index, test_index
 
 
-def split_train_valid_edges(edge_index, train_ratio=0.8, cv=1):
+def split_train_valid_edges(edge_index, train_ratio=0.8, cv=1, fill_list=True):
     n_edge = edge_index.shape[1]
     train_edge_index = []
     valid_edge_index = []
@@ -90,6 +90,10 @@ def split_train_valid_edges(edge_index, train_ratio=0.8, cv=1):
             valid_index = edge_index[:, rd == i]
             train_edge_index.append(train_index.long())
             valid_edge_index.append(valid_index.long())
+
+    if not fill_list:
+        assert cv == 1
+        valid_edge_index = valid_edge_index[0]
 
     return train_edge_index, valid_edge_index
 
@@ -135,7 +139,7 @@ def split_inductive_edges(data, edge_symbols, weighted_edge_names, unseen_ratio,
     tar_node = conf.target_node
 
     # semi-inductive
-    if conf.task_type == "semi_inductive":
+    if conf.task_type == "semi-inductive":
         network = data["{}_edge_index".format(edge_symbols[conf.target_network])]
         src_dims = Counter(network[0].tolist())
         cand_src_ids = np.array([k for k, v in src_dims.items() if v >= 2])
@@ -157,7 +161,7 @@ def split_inductive_edges(data, edge_symbols, weighted_edge_names, unseen_ratio,
         external_tar_set = set(external_tar_index)
 
     # fully-inductive
-    elif conf.task_type == "fully_inductive":
+    elif conf.task_type == "fully-inductive":
         src_dims = Counter(network[0].tolist())
         tar_dims = Counter(network[1].tolist())
         cand_src_ids = np.array([k for k, v in src_dims.items() if v >= 2])
@@ -193,16 +197,16 @@ def split_inductive_edges(data, edge_symbols, weighted_edge_names, unseen_ratio,
     # train-test split for target network
     train_edge_index, test_edge_index = [], []
     for pair in data[
-        "{}_edge_index".format(edge_symbols[conf["target_network"]])
+        "{}_edge_index".format(edge_symbols[conf.target_network])
     ].T.numpy():
         if pair[0] in internal_src_set:
-            if conf.task_type == "semi_inductive":
+            if conf.task_type == "semi-inductive":
                 train_edge_index.append(pair)
             else:
                 if pair[1] in internal_tar_set:
                     train_edge_index.append(pair)
         elif pair[0] in external_src_set:
-            if conf.task_type == "semi_inductive":
+            if conf.task_type == "semi-inductive":
                 test_edge_index.append(pair)
             else:
                 if pair[1] in external_tar_set:
@@ -230,7 +234,7 @@ def split_inductive_edges(data, edge_symbols, weighted_edge_names, unseen_ratio,
             if second in mask_index.keys():
                 second_mask = mask_index[second]
             else:
-                second_mask = mask_index[second]
+                second_mask = None
 
             if (first_mask is None) and (second_mask is None):
                 updated_edge_index[symbol] = data["{}_edge_index".format(symbol)]
@@ -268,6 +272,52 @@ def split_inductive_edges(data, edge_symbols, weighted_edge_names, unseen_ratio,
     train_edge_index = [Tensor(train_edge_index.T).long()]
     test_edge_index = Tensor(test_edge_index.T).long()
     return data, train_edge_index, test_edge_index
+
+
+def check_inductive_split(data, edge_symbols, conf):
+    int_src = set(data.internal_src_index)
+    ext_src = set(data.external_src_index)
+    int_tar = set(data.internal_tar_index)
+    ext_tar = set(data.external_tar_index)
+
+    for network, symbol in edge_symbols.items():
+        if network == conf.target_network:
+            continue
+
+        else:
+            node1, node2, *diff = network.split("_")
+            node1_set = set(data["{}_edge_index".format(symbol)][0].tolist())
+            node2_set = set(data["{}_edge_index".format(symbol)][1].tolist())
+
+            # check node1
+            if node1 == conf.source_node:
+                assert not node1_set & ext_src
+            elif node1 == conf.target_node:
+                assert not node1_set & ext_tar
+            else:
+                pass
+
+            # check node2
+            if node2 == conf.source_node:
+                assert not node2_set & ext_src
+            elif node2 == conf.target_node:
+                assert not node2_set & ext_tar
+            else:
+                pass
+
+    if conf.task_type == "semi-inductive":
+        assert not set(data.train_edge_index[0][0].tolist()) & ext_src
+        assert not set(data.valid_edge_index[0][0].tolist()) & int_src
+        assert not set(data.test_edge_index[0].tolist()) & int_src
+
+    elif conf.task_type == "semi-inductive":
+        assert not set(data.train_edge_index[0][0].tolist()) & ext_src
+        assert not set(data.valid_edge_index[0][0].tolist()) & int_src
+        assert not set(data.test_edge_index[0].tolist()) & int_src
+
+        assert not set(data.train_edge_index[0][1].tolist()) & ext_tar
+        assert not set(data.valid_edge_index[0][1].tolist()) & int_tar
+        assert not set(data.test_edge_index[1].tolist()) & int_tar
 
 
 def split_link_prediction_datas(
@@ -313,11 +363,12 @@ def split_link_prediction_datas(
             data, edge_symbols, weighted_edges, unseen_ratio=unseen_ratio, conf=conf
         )
         valid_edge_index, test_edge_index = split_train_valid_edges(
-            test_edge_index, train_ratio=0.5
+            test_edge_index, train_ratio=0.5, fill_list=False
         )
         data.train_edge_index = train_edge_index
         data.valid_edge_index = valid_edge_index
         data.test_edge_index = test_edge_index
+        check_inductive_split(data, edge_symbols, conf)
 
     else:
         raise Exception("Task type error")
