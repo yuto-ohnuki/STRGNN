@@ -1,4 +1,4 @@
-import os, sys, glob
+import os, sys, glob, math
 import numpy as np
 import torch
 import torch.nn as nn
@@ -63,13 +63,14 @@ class DropEdge(nn.Module):
 
 
 class ECFPEncoder(nn.Module):
-    def __init__(self, in_dim, out_dim, node_num, conf):
+    def __init__(self, in_dim, out_dim, node_num, mask_index, conf):
         super(ECFPEncoder, self).__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.node_num = node_num
         self.device = conf.device
         self.dropout_ratio = conf.dropout_ratio
+        self.mask_index = mask_index
 
         self.fc1 = nn.Sequential(
             nn.Linear(self.in_dim, self.in_dim // 2),
@@ -82,7 +83,7 @@ class ECFPEncoder(nn.Module):
             nn.Dropout(self.dropout_ratio),
         )
         self.fc3 = nn.Sequential(nn.Linear(self.in_dim // 4, out_dim))
-
+        
     def forward(self, x):
         x = self.fc1(x)
         x = F.normalize(x, p=2, dim=-1)
@@ -90,8 +91,12 @@ class ECFPEncoder(nn.Module):
         x = F.normalize(x, p=2, dim=-1)
         x = self.fc3(x)
         x = F.normalize(x, p=2, dim=-1)
+        
+        # mask for external node's embeddings
+        if self.training:
+            x[self.mask_index] = 0
+            
         return x
-
 
 class AminoSeqEncoder(nn.Module):
     def __init__(
@@ -104,6 +109,7 @@ class AminoSeqEncoder(nn.Module):
         channel2,
         kernel_size,
         stride,
+        mask_index,
         conf,
     ):
         super(AminoSeqEncoder, self).__init__()
@@ -119,23 +125,25 @@ class AminoSeqEncoder(nn.Module):
         self.stride = stride
         self.dropout = conf.dropout_ratio
         self.device = conf.device
-
-        self.conv1 = nn.Sequenctial(
-            nn.Conv1d(self.uniq_chars, self.channel1, self.kernel_size, self.padding),
+        self.mask_index = mask_index
+    
+        self.conv1 = nn.Sequential(
+            nn.Conv1d(self.uniq_chars, self.channel1, self.kernel_size),
             nn.BatchNorm1d(self.channel1),
             nn.LeakyReLU(inplace=True),
             nn.AvgPool1d(kernel_size=self.kernel_size, stride=self.stride),
         )
 
-        self.conv2 = nn.Sequenctial(
-            nn.Conv1d(self.uniq_chars, self.channel2, self.kernel_size, self.padding),
+        self.conv2 = nn.Sequential(
+            nn.Conv1d(self.channel1, self.channel2, self.kernel_size),
             nn.BatchNorm1d(self.channel2),
             nn.LeakyReLU(inplace=True),
             nn.AvgPool1d(kernel_size=self.kernel_size, stride=self.stride),
         )
-
+        
+        self.densed_dim = self.calc_flattened_dim(self.seq_mxlen, self.channel2, [self.conv1, self.conv2])
         self.dense = nn.Sequential(
-            nn.Linear(4335, self.out_dim * 4),
+            nn.Linear(self.densed_dim, self.out_dim * 4),
             nn.LeakyReLU(inplace=True),
             nn.Dropout(self.dropout),
             nn.Linear(self.out_dim * 4, self.out_dim * 2),
@@ -143,14 +151,25 @@ class AminoSeqEncoder(nn.Module):
             nn.Dropout(self.dropout),
             nn.Linear(self.out_dim * 2, self.out_dim),
         )
+        
+    def calc_flattened_dim(self, dim, channels, modules):
+        for module in modules:
+            conv = module[0]
+            pool = module[-1]
+            dim = math.floor((dim+2*conv.padding[0] - conv.dilation[0]*(conv.kernel_size[0]-1)-1)/conv.stride[0] + 1)
+            dim = math.floor((dim+2*pool.padding[0] - pool.kernel_size[0])/pool.stride[0] + 1)
+        return dim*channels
 
     def forward(self, x):
         x = self.conv1(x)
         x = self.conv2(x)
         x = x.view(x.size(0), -1)
         x = self.dense(x)
+        
+        # mask for external node's embeddings
+        if self.training and (self.mask_index is not None):
+            x[self.mask_index] = 0
         return x
-
 
 class MonoEncoder(nn.Module):
     def __init__(self, dim, n_src, dropout_ratio, route_type):
