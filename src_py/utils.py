@@ -1,11 +1,12 @@
 import os, sys, glob, copy
-import scipy.sparse as sp
 import numpy as np
 import pandas as pd
+import scipy.sparse as sp
 import torch
+import torch.nn as nn
 from tqdm import tqdm
 from torch import Tensor
-
+from torch.nn import CosineEmbeddingLoss
 from metrics import *
 
 
@@ -158,6 +159,23 @@ def negative_sampling_edge_index(
         ).long()
         return neg_edge
 
+    elif conf.task_type == "semi-inductive":
+        neg_edge = []
+        negative_size = 2
+
+        # only choice random target nodes
+        for i, src in enumerate(pos[0]):
+            for _ in range(negative_size):
+                while True:
+                    neg_tar = np.random.randint(0, n_tar)
+                    if (used is not None) and ({(src, neg_tar)} <= used):
+                        continue
+                    if not {(src, neg_tar)} <= pos_pair:
+                        break
+                neg_edge.append([src, neg_tar])
+        neg_edge = Tensor(np.array(neg_edge)).T.long()
+        return neg_edge
+
     else:
         raise Exception("not implemented")
 
@@ -184,11 +202,7 @@ def to_bipartite_network(
         if network == conf.target_network:
             continue
 
-        elif src == tar:
-            continue
-
-        else:
-            assert src != tar
+        if src != tar:
             data["{}_edge_index".format(symbol)] = to_undirected(
                 data["{}_edge_index".format(symbol)],
                 data["n_{}".format(symbol_to_nodename[src])],
@@ -197,6 +211,8 @@ def to_bipartite_network(
                 data["{}_edge_weight".format(symbol)] = data[
                     "{}_edge_weight".format(symbol)
                 ].repeat(2)
+        else:
+            pass
     return data
 
 
@@ -268,11 +284,29 @@ def describe_dataset(data, nodes, edges, edge_symbols, conf):
     print(line)
 
 
-def train(model, optimizer, feat, pos_edge_index, neg_edge_index, conf):
+def train(
+    model,
+    optimizer,
+    feat,
+    pos_edge_index,
+    neg_edge_index,
+    nsymbol,
+    embsymbol,
+    int_src_index,
+    int_tar_index,
+    conf,
+):
     model.train()
     optimizer.zero_grad()
-    ret_feat, pos_score, neg_score = model.encoder(feat, pos_edge_index, neg_edge_index)
+    src_symbol = nsymbol[conf.source_node]
+    tar_symbol = nsymbol[conf.target_node]
 
+    if conf.source_node in embsymbol.keys():
+        feat["src_feat_init"] = feat["{}_feat".format(src_symbol)].clone()
+    if conf.target_node in embsymbol.keys():
+        feat["tar_feat_init"] = feat["{}_feat".format(tar_symbol)].clone()
+
+    feat, pos_score, neg_score = model(feat, pos_edge_index, neg_edge_index)
     pos_target = torch.ones(pos_score.shape[0])
     neg_target = torch.zeros(neg_score.shape[0])
 
@@ -283,14 +317,14 @@ def train(model, optimizer, feat, pos_edge_index, neg_edge_index, conf):
         -torch.log(pos_score + conf.eps).mean()
         - torch.log(1 - neg_score + conf.eps).mean()
     )
-
     if conf.norm_lambda != 0:
         if conf.encoder_type in ["MIX", "NN"]:
             l1_fnn = torch.sum(
                 Tensor(
                     [
                         torch.norm(
-                            model.encoder.net_encoder[key].fc[0].weight, conf.reg_type
+                            model.encoder.net_encoder[key].fnn_layer[0].weight,
+                            conf.reg_type,
                         )
                         * conf.norm_lambda
                         for key in model.encoder.net_encoder.keys()
@@ -303,7 +337,8 @@ def train(model, optimizer, feat, pos_edge_index, neg_edge_index, conf):
                 Tensor(
                     [
                         torch.norm(
-                            model.encoder.net_encoder[key].conv.weight, conf.reg_type
+                            model.encoder.net_encoder[key].gnn_layer.weight,
+                            conf.reg_type,
                         )
                         * conf.norm_lambda
                         for key in model.encoder.net_encoder.keys()
@@ -312,19 +347,74 @@ def train(model, optimizer, feat, pos_edge_index, neg_edge_index, conf):
             )
             loss += l1_gnn
 
+    if conf.emb_loss == "cos":
+        cosemb_loss = CosineEmbeddingLoss()
+        if conf.task_type == "semi-inductive":
+            label_src = torch.ones(len(int_src_index)).to(conf.device)
+            emb_loss_src = cosemb_loss(
+                feat["{}_feat".format(src_symbol)][int_src_index],
+                feat["{}_feat_att".format(src_symbol)][int_src_index],
+                label_src,
+            )
+            loss += emb_loss_src
+        elif conf.task_type == "fully-inductive":
+            label_src = torch.ones(len(int_src_index)).to(conf.device)
+            label_tar = torch.ones(len(int_tar_index)).to(conf.device)
+            emb_loss_src = cosemb_loss(
+                feat["{}_feat".format(src_symbol)][int_src_index],
+                feat["{}_feat_att".format(src_symbol)][int_src_index],
+                label_src,
+            )
+            emb_loss_tar = cosemb_loss(
+                feat["{}_feat".format(tar_symbol)][int_tar_index],
+                feat["{}_feat_att".format(tar_symbol)][int_tar_index],
+                label_tar,
+            )
+            loss += emb_loss_src + emb_loss_tar
+    else:
+        pass
+
     loss.backward()
     optimizer.step()
 
     metrics = evaluation(score, target)
     loss = loss.item()
+    return feat, loss, metrics
 
-    return ret_feat, loss, metrics
 
-
-def valid_and_test(model, feat, pos_edge_index, neg_edge_index, conf):
+def valid_and_test(
+    model,
+    feat,
+    pos_edge_index,
+    neg_edge_index,
+    nsymbol,
+    embsymbol,
+    int_src_index,
+    int_tar_index,
+    conf,
+):
     model.eval()
-    z_src = feat["{}_feat".format(conf.source_node)]
-    z_tar = feat["{}_feat".format(conf.target_node)]
+    src_symbol = nsymbol[conf.source_node]
+    tar_symbol = nsymbol[conf.target_node]
+
+    if conf.task_type == "transductive":
+        z_src = feat["{}_feat".format(src_symbol)]
+        z_tar = feat["{}_feat".format(tar_symbol)]
+    elif conf.task_type == "semi-inductive":
+        z_src = model.encoder.att_encoder[conf.source_node](feat["src_feat_init"]).to(
+            conf.device
+        )
+        z_tar = feat["{}_feat".format(tar_symbol)]
+    elif conf.task_type == "fully-inductive":
+        z_src = model.encoder.att_encoder[conf.source_node](feat["src_feat_init"]).to(
+            conf.device
+        )
+        z_tar = model.encoder.att_encoder[conf.target_node](feat["tar_feat_init"]).to(
+            conf.device
+        )
+    else:
+        raise Exception("Task type error")
+
     pos_score = model.decoder(z_src, z_tar, pos_edge_index)
     neg_score = model.decoder(z_src, z_tar, neg_edge_index)
 
@@ -345,7 +435,8 @@ def valid_and_test(model, feat, pos_edge_index, neg_edge_index, conf):
                 Tensor(
                     [
                         torch.norm(
-                            model.encoder.net_encoder[key].fc[0].weight, conf.reg_type
+                            model.encoder.net_encoder[key].fnn_layer[0].weight,
+                            conf.reg_type,
                         )
                         * conf.norm_lambda
                         for key in model.encoder.net_encoder.keys()
@@ -358,7 +449,8 @@ def valid_and_test(model, feat, pos_edge_index, neg_edge_index, conf):
                 Tensor(
                     [
                         torch.norm(
-                            model.encoder.net_encoder[key].conv.weight, conf.reg_type
+                            model.encoder.net_encoder[key].gnn_layer.weight,
+                            conf.reg_type,
                         )
                         * conf.norm_lambda
                         for key in model.encoder.net_encoder.keys()
@@ -366,6 +458,33 @@ def valid_and_test(model, feat, pos_edge_index, neg_edge_index, conf):
                 )
             )
             loss += l1_gnn
+
+    if conf.emb_loss == "cos":
+        cosemb_loss = CosineEmbeddingLoss()
+        if conf.task_type == "semi-inductive":
+            label_src = torch.ones(len(int_src_index)).to(conf.device)
+            emb_loss_src = cosemb_loss(
+                feat["{}_feat".format(src_symbol)][int_src_index],
+                feat["{}_feat_att".format(src_symbol)][int_src_index],
+                label_src,
+            )
+            loss += emb_loss_src
+        elif conf.task_type == "fully-inductive":
+            label_src = torch.ones(len(int_src_index)).to(conf.device)
+            label_tar = torch.ones(len(int_tar_index)).to(conf.device)
+            emb_loss_src = cosemb_loss(
+                feat["{}_feat".format(src_symbol)][int_src_index],
+                feat["{}_feat_att".format(src_symbol)][int_src_index],
+                label_src,
+            )
+            emb_loss_tar = cosemb_loss(
+                feat["{}_feat".format(tar_symbol)][int_tar_index],
+                feat["{}_feat_att".format(tar_symbol)][int_tar_index],
+                label_tar,
+            )
+            loss += emb_loss_src + emb_loss_tar
+    else:
+        pass
 
     metrics = evaluation(score, target)
     loss = loss.item()
