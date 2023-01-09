@@ -29,6 +29,9 @@ def get_args():
     parser.add_argument("--reg_type", "-rt", default=1)
     parser.add_argument("--lr", "-lr", type=float, default=0.001)
     parser.add_argument("--emb_dim", "-d", type=int, default=128)
+    parser.add_argument(
+        "--emb_loss", "-ls", type=str, default="none", choices=["cos", "none"]
+    )
     parser.add_argument("--cycle_num", "-c", type=int, default=2)
     parser.add_argument("--norm_lambda", "-nl", type=float, default=1e-6)
     parser.add_argument("--dropedge_ratio", "-de", type=float, default=0.2)
