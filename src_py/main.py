@@ -12,12 +12,6 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from torch import Tensor
-from torch.nn import Parameter as Param
-
-from torch_geometric.nn.models import GAE
-from torch_geometric.nn.conv import GCNConv, MessagePassing
-from torch_geometric.data import Data
-from torch_geometric.utils import add_self_loops, degree
 
 from utils import *
 from arguments import *
@@ -202,21 +196,24 @@ def main():
     best_states = dict()
 
     print("\t--- LINK PREDICTION TYPE: {}---".format(conf.task_type))
-    for cv in range(conf.cv):
+    print("\t--- LINK PREDICTION TYPE: {}---".format(conf.task_type))
 
-        """Define Model"""
+    for cv in range(conf.cv):
+        print("\n>>> cross validation: {} <<<".format(cv + 1))
+
+        # define Model
         epoch_num = 0
         best_auprc = 0
         model = STRGNN(
             data, node_symbols, edge_symbols, weighted_edge_names, att_dims, conf
-        )
+        ).to(conf.device)
         optimizer = optim.Adam(model.parameters(), lr=conf.lr)
 
-        """ Model training """
-        for epoch in range(conf.epoch_num - epoch_num):
+        # model learning 
+        for epoch in range(conf.epoch_num):
             time_begin = time.time()
 
-            # initial features
+            # initial feature
             feat = {}
             for key, value in node_symbols.items():
                 if key in att_symbols.keys():
@@ -226,6 +223,7 @@ def main():
 
             feat = Data.from_dict(feat)
 
+            # negative sampling
             pos_edge_index = data.train_edge_index[cv].clone()
             neg_edge_index = negative_sampling_edge_index(
                 pos_edge_index,
@@ -236,9 +234,21 @@ def main():
                 data.internal_tar_index,
                 conf,
             ).to(conf.device)
-            ret_feat, train_loss, train_metrics = train(
-                model, optimizer, feat, pos_edge_index, neg_edge_index, conf
+
+            # train
+            feat, train_loss, train_metrics = train(
+                model,
+                optimizer,
+                feat,
+                pos_edge_index,
+                neg_edge_index,
+                node_symbols,
+                att_symbols,
+                data.internal_src_index,
+                data.internal_tar_index,
+                conf,
             )
+
             train_auroc, train_auprc, train_acc = (
                 train_metrics["AUROC"],
                 train_metrics["AUPRC"],
@@ -246,8 +256,9 @@ def main():
             )
             train_records[cv].append([train_auroc, train_auprc, train_acc])
             train_losses[cv].append(train_loss)
+
             if epoch % conf.verbose == conf.verbose - 1 or epoch == 0:
-                print("Train >>", end="")
+                print("Train >> ", end="")
                 if epoch == 0:
                     print(
                         "EPOCH:{:3d}  AUROC:{:0.4f}  AUPRC:{:0.4f} ACC:{:0.4f}  TIME:{:0.2f}".format(
@@ -260,7 +271,7 @@ def main():
                     )
                 else:
                     print(
-                        "EPOCH:{:3d}  VALID_LOSS:{:0.4f}  AUROC:{:0.4f}  AUPRC:{:0.4f} ACC:{:0.4f}  TIME:{:0.2f}".format(
+                        "EPOCH:{:3d}  TRAIN_LOSS:{:0.4f}  AUROC:{:0.4f}  AUPRC:{:0.4f} ACC:{:0.4f}  TIME:{:0.2f}".format(
                             epoch + 1,
                             train_loss,
                             train_auroc,
@@ -270,8 +281,17 @@ def main():
                         )
                     )
 
+            # valid Model
             val_loss, val_metrics = valid_and_test(
-                model, ret_feat, data.valid_edge_index, data.valid_neg_edge_index
+                model,
+                feat,
+                data.valid_edge_index[cv],
+                data.valid_neg_edge_index[cv],
+                node_symbols,
+                att_symbols,
+                data.internal_src_index,
+                data.internal_tar_index,
+                conf,
             )
             val_auroc, val_auprc, val_acc = (
                 val_metrics["AUROC"],
@@ -304,18 +324,27 @@ def main():
                         )
                     )
 
-            """ Test and Update """
+            # test and update
             if val_auprc >= best_auprc:
                 best_auprc = val_auprc
-                print("\t-- UPDATE BEST MODEL --")
+                print("\t-- UPDATE BEST MODEL --".format(epoch))
                 state = {
                     "cv": cv,
                     "epoch": epoch_num,
+                    "feat": feat,
                     "net": model.state_dict(),
                     "optimizer": optimizer.state_dict(),
                 }
                 test_loss, test_metrics = valid_and_test(
-                    ret_feat, data.test_edge_index, data.test_neg_edge_index, conf
+                    model,
+                    feat,
+                    data.test_edge_index,
+                    data.test_neg_edge_index,
+                    node_symbols,
+                    att_symbols,
+                    data.internal_src_index,
+                    data.internal_tar_index,
+                    conf,
                 )
                 test_auroc, test_auprc, test_acc = (
                     test_metrics["AUROC"],
@@ -323,12 +352,20 @@ def main():
                     test_metrics["ACC"],
                 )
                 best_records[cv].append(test_metrics)
-
-            epoch_num += 1
         else:
-            """Save model"""
+            # save result
             best_states[cv] = state
-
+    
+    ############################################################
+    ### results
+    ############################################################
+    
+    epochs = [i for i in range(1, conf.epoch_num+1)]
+    train_aurocs, train_auprcs, train_accs = get_record(train_records)
+    valid_aurocs, valid_auprcs, valid_accs = get_record(valid_records)
+    
+    
+    
 
 if __name__ == "__main__":
     main()
