@@ -1,9 +1,11 @@
-import os, sys, glob, copy
+import os, sys, glob, copy, datetime
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 import torch
 import torch.nn as nn
+import matplotlib.pyplot as plt
+import seaborn as sns
 from tqdm import tqdm
 from torch import Tensor
 from torch.nn import CosineEmbeddingLoss
@@ -60,6 +62,12 @@ def load_nodes(path, keys):
         nodes[key] = pd.read_csv(filepath)
     return nodes
 
+def save_models(state, txt):
+    dt = datetime.datetime.now()
+    stamp = dt.strftime("%Y-%m-%d_%H:%M:%S")
+    torch.save(state["net"], "{}_{}_ModelStates.pth".format(stamp, txt))
+    torch.save(state["optimizer"], "{}_{}_OptimizerStates.pth".format(stamp, txt))
+    torch.save(state["feat"], "{}_{}_features.pt".format(stamp, txt))
 
 def load_edges(path, unweighted_keys, weighted_keys):
     edge_indexes = dict()
@@ -215,6 +223,25 @@ def to_bipartite_network(
             pass
     return data
 
+def heatmap_modelweights(model, figsize=(12,8), vmin=0.005, vmax=0.002):
+    fnn_weight, gnn_weight = {}, {}
+    for x in model.encoder.state_dict().keys():
+        key = x.split('.')
+        if key[0]=='net_encoder' and key[-1]=='weight':
+            network = key[1]
+            route = key[2]
+            if route == 'fnn_layer':
+                fnn_weight[network] = torch.pow(model.encoder.state_dict()[x], 2).mean().item()
+            elif route == 'gnn_layer':
+                gnn_weight[network] = torch.pow(model.encoder.state_dict()[x], 2).mean().item()
+            else:
+                pass
+    fig = plt.figure(figsize=figsize)
+    weights = np.array([list(fnn_weight.values()), list(gnn_weight.values())])
+    sns.heatmap(weights, cmap='Blues', yticklabels=['FNN','GNN'], xticklabels=list(fnn_weight.keys()), vmin=vmin, vmax=vmax)
+    plt.xlabel("Networks")
+    plt.show()
+    plt.close()
 
 def describe_dataset(data, nodes, edges, edge_symbols, conf):
 
