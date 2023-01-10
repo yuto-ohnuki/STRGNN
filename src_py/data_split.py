@@ -310,7 +310,7 @@ def check_inductive_split(data, edge_symbols, conf):
         assert not set(data.valid_edge_index[0][0].tolist()) & int_src
         assert not set(data.test_edge_index[0].tolist()) & int_src
 
-    elif conf.task_type == "semi-inductive":
+    elif conf.task_type == "fully-inductive":
         assert not set(data.train_edge_index[0][0].tolist()) & ext_src
         assert not set(data.valid_edge_index[0][0].tolist()) & int_src
         assert not set(data.test_edge_index[0].tolist()) & int_src
