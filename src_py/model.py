@@ -16,8 +16,9 @@ class MyEncoder(nn.Module):
         self.device = conf.device
         self.route = conf.encoder_type
         self.cycle = conf.cycle_num
-        self.network_order = conf.network_order
         self.target_network = conf.target_network
+        self.dropout_ratio = conf.dropout_ratio
+        self.network_order = [esymbols[x] for x in conf.network_order]
 
         # nodes
         self.n_nodes = {key: data["n_{}".format(key)] for key in nsymbols.keys()}
@@ -37,13 +38,24 @@ class MyEncoder(nn.Module):
             [esymbols[network] for network in weighted_networks]
         )
 
+        # mask
+        if conf.source_node == "drug":
+            self.src_mask = data.external_src_index
+        else:
+            self.src_mask = None
+
+        if conf.target_node == "protein":
+            self.tar_mask = data.external_tar_index
+        else:
+            self.tar_mask = None
+
         # Attribute Encoder
         self.att_encoder = nn.ModuleDict()
         self.att_encoder["drug"] = ECFPEncoder(
-            attributes["drug_ecfp"], conf.emb_dim, data["n_drug"], conf
+            attributes["drug_ecfp"], conf.emb_dim, data["n_drug"], self.src_mask, conf
         )
         self.att_encoder["protein"] = AminoSeqEncoder(
-            attributes["protein_seq"],
+            attributes["protein_uniqchar"],
             attributes["protein_mxlen"],
             data["n_drug"],
             conf.emb_dim,
@@ -51,6 +63,7 @@ class MyEncoder(nn.Module):
             channel2=5,
             kernel_size=3,
             stride=2,
+            mask_index=self.tar_mask,
             conf=conf,
         )
 
@@ -89,7 +102,7 @@ class MyEncoder(nn.Module):
         feat["p_feat"] = p_feat_att.clone()
 
         # Network Encoder
-        for _ in range(self.cycle_num):
+        for _ in range(self.cycle):
             for network in self.network_order:
                 src, tar, *diff = network.split("_")
 
@@ -99,14 +112,13 @@ class MyEncoder(nn.Module):
                             self.device
                         )
                         feat["{}_feat".format(src)] = self.net_encoder[network](
-                            feat["{}_feat".format(src)], edge_index, self.route
+                            feat["{}_feat".format(src)], edge_index
                         )
                     else:
                         edge_index = self.edge_index[network].to(self.device)
                         feat["{}_feat".format(src)] = self.net_encoder[network](
                             feat["{}_feat".format(src)],
                             edge_index,
-                            self.route,
                             self.edge_weight[network],
                         )
 
@@ -122,7 +134,6 @@ class MyEncoder(nn.Module):
                             feat["{}_feat".format(src)],
                             feat["{}_feat".format(tar)],
                             edge_index,
-                            self.route,
                         )
                     else:
                         edge_index = self.edge_index[network].to(self.device)
@@ -133,7 +144,6 @@ class MyEncoder(nn.Module):
                             feat["{}_feat".format(src)],
                             feat["{}_feat".format(tar)],
                             edge_index,
-                            self.route,
                             self.edge_weight[network],
                         )
 
