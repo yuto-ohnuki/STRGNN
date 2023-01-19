@@ -1,7 +1,9 @@
 # STRGNN
 This repo contains the code and the datasets for our paper "Deep learning of multimodal networks with topological regularization for drug repositioning".
 
-<img align="center" src="assets/overview.png" width="70%">
+<div align="center">
+  <img src="assets/overview.png" width="80%">
+</div>
 
 # Requirements
 STRGNN is tested to work under Python 3.8.
