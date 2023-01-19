@@ -1,6 +1,7 @@
 # STRGNN
 This repo contains the code and the datasets for our paper "Deep learning of multimodal networks with topological regularization for drug repositioning".
 
+![](asstets/strgnn_overview.png)
 
 # Requirements
 STRGNN is tested to work under Python 3.8.
@@ -33,7 +34,6 @@ Options are: <br>
 <code>-e: The number of epochs, default=5000</code><br>
 <code>-v: The number of verbose, default=10</code><br>
 <code>-save: The parameter to decide save model, default=False</code><br>
-
 
 # Contacts
 Please contact me at yuuto.0902@dna.bio.keio.ac.jp for any questions or comments.
