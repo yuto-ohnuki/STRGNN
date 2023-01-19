@@ -27,7 +27,7 @@ All the required packages can be installed using the following command:
 # Quick start
 1. Unzip multimodal network dataset.
 
-        $ python unzip.py
+        $ python Dataset/unzip.py
 
 
 2. Run STRGNN as following command:
