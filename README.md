@@ -1,7 +1,6 @@
 # STRGNN
 This repo contains the code and the datasets for our paper "Deep learning of multimodal networks with topological regularization for drug repositioning".
 
-{: align="center"}
 <img src="assets/overview.png" width="60%">
 
 # Requirements
