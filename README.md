@@ -1,5 +1,9 @@
-# STRGNN
-This repo contains the code and the datasets for our paper "Deep learning of multimodal networks with topological regularization for drug repositioning".
+# STRGNN: Sequentially Topological Regularization Graph Neural Network
+This repository contains the implementation and the datasets for our paper "Deep learning of multimodal networks with topological regularization for drug repositioning".
+
+STRGNN effectively predicts the association between drugs and diseases based on large-scale multimodal networks containing abundant omics information.
+
+We proposed "topological regularization", which appropriately selects informative modalities and discard redundant ones from the multimodal network data.
 
 <div align="center">
   <img src="assets/overview.png" width="80%">
@@ -21,10 +25,16 @@ All the required packages can be installed using the following command:
     $ pip install -r requirements.txt
 
 # Quick start
-1. Download multimodal network dataset created in this paper. <br>
-[Dataset](https://drive.google.com/drive/folders/1MILzvqiNGdUwE4wbBLSKcmGwZVXyzmhB?usp=sharing)
+1. Unzip multimodal network dataset.
 
-2. Run <code>python main.py</code> <br>
+    $ python unzip.py
+
+
+2. Run STRGNN as following command:
+
+    $ python main.py
+
+
 Options are: <br>
 <code>-c: The number of cycle, default=2</code><br>
 <code>-d: The embedding dimension, default=128</code><br>
