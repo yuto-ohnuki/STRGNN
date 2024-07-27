@@ -109,7 +109,7 @@ def check_and_update_args(args):
 
 def main():
     args = get_args()
-    print(args)
+    # print(args)
 
 
 if __name__ == "__main__":
