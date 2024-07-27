@@ -266,7 +266,7 @@ def describe_dataset(data, nodes, edges, edge_symbols, conf):
     print("\nEdge counts >>")
     for key in edges:
         src, tar, *diff = key.split("_")
-        if src == tar:
+        if src == tar or key == conf.target_network:
             print(
                 "\t{}: {}".format(
                     key, data["{}_edge_index".format(edge_symbols[key])].shape[1]
