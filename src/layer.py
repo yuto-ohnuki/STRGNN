@@ -2,7 +2,7 @@ import os, sys, glob, math
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.functional as F
+import torch.nn.functional as F
 from torch import Tensor
 
 from torch_geometric.nn.conv import GCNConv, MessagePassing
