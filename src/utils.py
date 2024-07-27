@@ -238,8 +238,11 @@ def heatmap_modelweights(model, figsize=(12,8), vmin=0.005, vmax=0.002):
                 pass
     fig = plt.figure(figsize=figsize)
     weights = np.array([list(fnn_weight.values()), list(gnn_weight.values())])
-    sns.heatmap(weights, cmap='Blues', yticklabels=['FNN','GNN'], xticklabels=list(fnn_weight.keys()), vmin=vmin, vmax=vmax)
-    plt.xlabel("Networks")
+    heatmap = sns.heatmap(weights, cmap='Blues', yticklabels=['FNN','GNN'], xticklabels=list(fnn_weight.keys()), vmin=vmin, vmax=vmax)
+    cbar = heatmap.collections[0].colorbar
+    cbar.ax.tick_params(labelsize=16)
+    plt.xlabel("Networks", fontsize=18)
+    plt.xticks(fontsize=16)
     plt.show()
     plt.close()
 
