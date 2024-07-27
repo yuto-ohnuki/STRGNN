@@ -98,7 +98,7 @@ def main():
     }
     symbol_to_edgename = {v: k for k, v in edge_symbols.items()}
     edges, edge_weights = load_edges(
-        dataset_path, unweighted_edge_names, weighted_edge_names
+        dataset_path, unweighted_edge_names, weighted_edge_names, conf
     )
 
     # load attributes
