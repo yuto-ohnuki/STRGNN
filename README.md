@@ -65,7 +65,7 @@ Options are: <br>
 -type: The link prediction task type, default='transductive'
 -sno: (Option) Shuffle network order, default='none'
 -nop: (Oprion) Randomly insert/remove input networks, default='none'
--nrr: (Option) The ratio of input networks insertion/removal
+-nrr: (Option) The ratio of input networks insertion/removal, default='none'
 ```
 
 
