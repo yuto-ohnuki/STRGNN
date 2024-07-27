@@ -103,6 +103,9 @@ class MyEncoder(nn.Module):
 
         # Network Encoder
         for _ in range(self.cycle):
+            if self.shuffle_network_order == "every":
+                random.shuffle(self.network_order)
+            
             for network in self.network_order:
                 src, tar, *diff = network.split("_")
 
