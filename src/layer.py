@@ -176,7 +176,7 @@ class MonoEncoder(nn.Module):
         super(MonoEncoder, self).__init__()
         self.in_dim = dim
         self.out_dim = dim
-        self.route_type = route_type
+        self.route = route_type
         self.fnn_layer = nn.Sequential(
             nn.Linear(self.in_dim, self.out_dim),
             nn.LeakyReLU(inplace=True),
@@ -190,11 +190,11 @@ class MonoEncoder(nn.Module):
             x = self.gnn_layer(x, edge_index, edge_weight=edge_weight)
         elif self.route == "FNN":
             x = self.fnn_layer(x)
-        elif self.type == "SKIP":
+        elif self.route == "SKIP":
             x_s = torch.clone(x)
             x = self.gnn_layer(x, edge_index, edge_weight=edge_weight)
             x = x + x_s
-        elif self.type == "MIX":
+        elif self.route == "MIX":
             x_s = torch.clone(x)
             x = self.gnn_layer(x, edge_index, edge_weight)
             x_s = self.fnn_layer(x_s)
@@ -222,8 +222,9 @@ class BipartiteEncoder(nn.Module):
         )
         self.gnn_layer = GCNConv(self.in_dim, self.out_dim)
         self.node_norm = NodeNorm()
+        self.route = route_type
 
-    def forward(self, x_src, x_tar, edge_index, edge_weight):
+    def forward(self, x_src, x_tar, edge_index, edge_weight=None):
 
         x = torch.cat([x_src, x_tar], axis=0).to(self.device)
 
@@ -288,8 +289,10 @@ class MLPDecoder(nn.Module):
 
 
 class IPDDecoder(nn.Module):
-    def __init__(self):
+    def __init__(self, dec_type, dim):
         super(IPDDecoder, self).__init__()
+        self.dec_type = dec_type
+        self.dim = dim
 
     def forward(self, z_src, z_tar, edge_index):
         z = (z_src[edge_index[0]] * z_tar[edge_index[1]]).sum(dim=1)
