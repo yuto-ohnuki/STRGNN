@@ -182,7 +182,7 @@ def main():
     # to bipartite networks
     data = to_bipartite_network(
         data, edge_symbols, symbol_to_nodename, weighted_edge_names, conf
-    )
+    ).to(conf.device)
 
     describe_dataset(data, nodes, edges, edge_symbols, conf)
 
@@ -206,10 +206,11 @@ def main():
         best_auprc = 0
         model = STRGNN(
             data, node_symbols, edge_symbols, weighted_edge_names, att_dims, conf
-        ).to(conf.device)
+        )
+        model = model.to(conf.device)
         optimizer = optim.Adam(model.parameters(), lr=conf.lr)
 
-        # model learning 
+        # model training
         for epoch in range(conf.epoch_num):
             time_begin = time.time()
 
@@ -221,7 +222,7 @@ def main():
                 else:
                     feat["{}_feat".format(value)] = data["{}_feat".format(value)]
 
-            feat = Data.from_dict(feat)
+            feat = Data.from_dict(feat).to(conf.device)
 
             # negative sampling
             pos_edge_index = data.train_edge_index[cv].clone()
@@ -246,7 +247,7 @@ def main():
                 att_symbols,
                 data.internal_src_index,
                 data.internal_tar_index,
-                conf,
+                conf
             )
 
             train_auroc, train_auprc, train_acc = (
@@ -281,7 +282,7 @@ def main():
                         )
                     )
 
-            # valid Model
+            # validation Model
             val_loss, val_metrics = valid_and_test(
                 model,
                 feat,
@@ -363,6 +364,9 @@ def main():
     epochs = [i for i in range(1, conf.epoch_num+1)]
     train_aurocs, train_auprcs, train_accs = get_record(train_records)
     valid_aurocs, valid_auprcs, valid_accs = get_record(valid_records)
+
+
+    
     
     
     
