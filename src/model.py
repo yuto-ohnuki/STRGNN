@@ -92,6 +92,7 @@ class MyEncoder(nn.Module):
 
         # others
         self.drop_edge = DropEdge(conf.dropedge_ratio)
+        self.shuffle_network_order = conf.shuffle_network_order
 
     def forward(self, feat):
 
