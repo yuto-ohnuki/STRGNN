@@ -95,7 +95,7 @@ def show_results(train_record, valid_record, best_record, conf):
     
     # Test performance
     best_cv = np.argmax(ret_valid_auprcs)
-    result = best_records[best_cv][-1]
+    result = best_record[best_cv][-1]
     
     print("\tTest:")
     perf = {
