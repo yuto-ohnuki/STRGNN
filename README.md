@@ -22,41 +22,52 @@ Below packages are required by STRGNN.
 
 All the required packages can be installed using the following command:
 
-    $ pip install -r requirements.txt
+```
+$ pip install -r requirements.txt
+```
 
 # Quick start
 1. Unzip multimodal network dataset.
 
-        $ cd Dataset
-        $ python unzip.py
-
+```
+$ cd Dataset
+$ python unzip.py
+```
 
 2. Run STRGNN as following command:
 
-        $ cd src
-        $ python main.py
-
+```
+$ cd src
+$ python main.py
+```
 
 Options are: <br>
-<code>-c: The number of cycle, default=2</code><br>
-<code>-d: The embedding dimension, default=128</code><br>
-<code>-e: The number of epochs, default=5000</code><br>
-<code>-g: The cuda devive, default=0</code><br>
-<code>-s: The stride size, default=2</code><br>
-<code>-v: The number of verbose, default=10</code><br>
-<code>-cs: The channel size, default=5</code><br>
-<code>-cv: The number of cross-validation, default=1</code><br>
-<code>-de: The drop edge ratio, default=0.2</code><br>
-<code>-do: The dropout ratio, default=0.5</code><br>
-<code>-ks: The kernel size, default=3</code><br>
-<code>-ls: The embedding loss, default='none'</code><br>
-<code>-nl: The parameter of normalization lambda, default=1e-6</code><br>
-<code>-rt: The regularization type, default=1</code><br>
-<code>-tg: The target network, default='drug_disease'</code><br>
-<code>-dec: The decoder type, default='IPD'</code><br>
-<code>-enc: The encoder type, default='MIX'</code><br>
-<code>-save: The parameter to decide save model, default=False</code><br>
-<code>-type: The link prediction task type, default='transductive'</code><br>
+```
+-c: The number of cycle, default=2
+-d: The embedding dimension, default=128
+-e: The number of epochs, default=5000
+-g: The cuda devive, default=0
+-s: The stride size, default=2
+-v: The number of verbose, default=10
+-lr: The learning rate, default=0.001
+-cs: The channel size, default=5
+-cv: The number of cross-validation, default=1
+-de: The drop edge ratio, default=0.2
+-do: The dropout ratio, default=0.5
+-ks: The kernel size, default=3
+-ls: The embedding loss, default='none'
+-nl: The parameter of normalization lambda, default=1e-6
+-rt: The regularization type, default='l1'
+-tg: The target network, default='drug_disease'
+-dec: The decoder type, default='IPD'
+-enc: The encoder type, default='MIX'
+-save: The parameter to decide save model, default=False
+-type: The link prediction task type, default='transductive'
+-sno: (Option) Shuffle network order, default='none'
+-nop: (Oprion) Randomly insert/remove input networks, default='none'
+-nrr: (Option) The ratio of input networks insertion/removal
+```
+
 
 # Citing
 If you use STRGNN or our dataset, please cite our paper.
