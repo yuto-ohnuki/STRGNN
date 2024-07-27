@@ -26,7 +26,11 @@ def get_args():
     parser.add_argument(
         "--decoder_type", "-dec", default="IPD", choices=["CAT", "MUL", "IPD"]
     )
-    parser.add_argument("--reg_type", "-rt", default=1)
+    parser.add_argument("--reg_type", "-rt", default='l1', choices=['l1', 'l2', 'elastic'])
+    parser.add_argument(
+        "--input_network_operation", "-nop", default='none', choices=["insert", "remove", "none"]
+    )
+    parser.add_argument("--network_randomize_ratio", "-nrr", default=0)
     parser.add_argument("--lr", "-lr", type=float, default=0.001)
     parser.add_argument("--emb_dim", "-d", type=int, default=128)
     parser.add_argument(
@@ -50,6 +54,8 @@ def get_args():
 
 
 def check_and_update_args(args):
+    line = "#" * 40
+
     # check: target network
     assert (
         args.target_network == "drug_disease" or args.target_network == "drug_protein"
@@ -86,9 +92,17 @@ def check_and_update_args(args):
     assert args.target_network not in args.network_order
 
     # result
-    print('Args')
-    for key,value in vars(args).items():
-        print("{}:{}".format(key, value))
+    print(line)
+    print("Args: ")
+    for key, value in vars(args).items():
+        if key != "network_order":
+            print("\t{}:{}".format(key, value))
+        else:
+            print("\t{}:".format(key))
+            for e,name in enumerate(value):
+                print("\t\t{}: {}".format(e+1, name))
+    print(line)
+
 
 def main():
     args = get_args()
