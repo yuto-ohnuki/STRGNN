@@ -1,5 +1,6 @@
 import os, sys, glob
 import numpy as np
+import pandas as pd
 
 from sklearn.metrics import roc_curve, precision_recall_curve, auc, accuracy_score
 from sklearn.metrics import confusion_matrix
