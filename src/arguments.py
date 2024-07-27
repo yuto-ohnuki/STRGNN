@@ -27,6 +27,7 @@ def get_args():
         "--decoder_type", "-dec", default="IPD", choices=["CAT", "MUL", "IPD"]
     )
     parser.add_argument("--reg_type", "-rt", default='l1', choices=['l1', 'l2', 'elastic'])
+    parser.add_argument("--shuffle_network_order", "-sno", default="none", choices=["every", "once", "none"])
     parser.add_argument(
         "--input_network_operation", "-nop", default='none', choices=["insert", "remove", "none"]
     )
@@ -89,6 +90,8 @@ def check_and_update_args(args):
         "drug_protein",
         "drug_drug",
     ]
+    if args.shuffle_network_order == "once":
+        random.shuffle(args.network_order)
     assert args.target_network not in args.network_order
 
     # result
