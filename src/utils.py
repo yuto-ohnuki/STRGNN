@@ -69,7 +69,7 @@ def save_models(state, txt):
     torch.save(state["optimizer"], "{}_{}_OptimizerStates.pth".format(stamp, txt))
     torch.save(state["feat"], "{}_{}_features.pt".format(stamp, txt))
 
-def load_edges(path, unweighted_keys, weighted_keys):
+def load_edges(path, unweighted_keys, weighted_keys, conf):
     edge_indexes = dict()
     edge_weights = dict()
 
@@ -77,7 +77,10 @@ def load_edges(path, unweighted_keys, weighted_keys):
     for key in unweighted_keys:
         filepath = os.path.join(path, "Edge", "{}.npy".format(key))
         assert os.path.exists(filepath)
-        edge = sp.coo_matrix(np.load(filepath))
+        edge = np.load(filepath)
+        if conf.input_network_operation != "none":
+            edge = randomize_network(key, edge, conf)
+        edge = sp.coo_matrix(edge)
         edge = Tensor(np.array([edge.row, edge.col])).long()
         edge_indexes[key] = edge
 
@@ -86,12 +89,13 @@ def load_edges(path, unweighted_keys, weighted_keys):
         filepath = os.path.join(path, "Edge", "{}.npy".format(key))
         assert os.path.exists(filepath)
         edge = np.load(filepath)
+        if conf.input_network_operation != "none":
+            edge = randomize_network(key, edge, conf, weighted=True)
         row, col = edge.nonzero()
         edge_indexes[key] = Tensor([row, col]).long()
         edge_weights[key] = Tensor(np.array([edge[i][j] for i, j in zip(row, col)]))
 
     return edge_indexes, edge_weights
-
 
 def load_attributes(nodes, keys, nums, MXLEN=1000):
     atts = dict()
@@ -223,6 +227,116 @@ def to_bipartite_network(
             pass
     return data
 
+
+def remove_or_insert_symmetric_matrix(matrix, operation, ratio=0.2, insert_value=None):
+    triu_indexes = np.triu_indices(matrix.shape[0])
+    paired_indexes = np.column_stack(triu_indexes)
+    triu_values = matrix[triu_indexes]
+    
+    zero_indexes = paired_indexes[triu_values == 0]
+    non_zero_indexes = paired_indexes[triu_values != 0]
+    
+    if operation == 'insert':
+        insert_num = int(non_zero_indexes.shape[0] * ratio)
+        insert_indexes = zero_indexes[np.random.choice(zero_indexes.shape[0], insert_num, replace=False)]
+        
+        if insert_value is not None:
+            for i, j in insert_indexes:
+                matrix[i][j] = 1
+                matrix[j][i] = 1
+        else:
+            for i, j in insert_indexes:
+                matrix[i][j] = insert_value
+                matrix[j][i] = insert_value
+        
+        return matrix
+    
+    if operation == 'remove':
+        remove_num = int(non_zero_indexes.shape[0] * ratio)
+        remove_indexes = non_zero_indexes[np.random.choice(non_zero_indexes.shape[0], remove_num, replace=False)]
+        
+        for i, j in remove_indexes:
+            matrix[i][j] = 0
+            matrix[j][i] = 0
+        
+        return matrix
+    
+    else:
+        raise ValueError("OperationError")
+
+
+def remove_or_insert_asymmetric_matrix(matrix, operation, ratio=0.2, insert_value=None):
+    
+    zero_indexes = np.argwhere(matrix == 0)
+    non_zero_indexes = np.argwhere(matrix != 0)
+    
+    if operation == 'insert':
+        insert_num = int(non_zero_indexes.shape[0] * ratio)
+        insert_indexes = zero_indexes[np.random.choice(zero_indexes.shape[0], insert_num, replace=False)]
+        
+        for i,j in insert_indexes:
+            if insert_value is not None:
+                matrix[i][j] = 1
+            else:
+                matrix[i][j] = insert_value
+        
+        return matrix
+
+    elif operation == 'remove':
+        remove_num = int(non_zero_indexes.shape[0] * ratio)
+        remove_indexes = non_zero_indexes[np.random.choice(non_zero_indexes.shape[0], remove_num, replace=False)]
+        
+        for i,j in remove_indexes:
+            matrix[i][j] = 0
+        
+        return matrix
+    
+    else:
+        raise ValueError("Operation Error")
+
+
+def randomize_network(key, edge, conf, weighted=False):
+    
+    # In advance, calculated from original dataset
+    pre_calculated_average_weight = {
+        'disease_disease': 0.1351,
+        'drug_mirna': 0.3285,
+        'protein_mrna': 0.1841,
+        'protein_mirna': 0.1841,
+        'mrna_mrna': 0.2564,
+        'mrna_mirna': 0.2163,
+        'mirna_mirna': 0.2908
+    }
+    
+    src, tar, *diff = key.split("_")
+    if key == conf.target_network:
+        pass
+    
+    # Weighted network
+    elif key in pre_calculated_average_weight.keys():
+        if src == tar:
+            edge = remove_or_insert_symmetric_matrix(
+                edge, conf.input_network_operation, conf.network_randomize_ratio, pre_calculated_average_weight[key]
+            )
+        else:
+            edge = remove_or_insert_asymmetric_matrix(
+                edge, conf.input_network_operation, conf.network_randomize_ratio, pre_calculated_average_weight[key]
+            )
+    
+    # Not weighted network
+    else:
+        if src == tar:
+            edge = remove_or_insert_symmetric_matrix(
+                edge, conf.input_network_operation, conf.network_randomize_ratio
+            )
+        else:
+            edge = remove_or_insert_asymmetric_matrix(
+                edge, conf.input_network_operation, conf.network_randomize_ratio
+            )
+            
+    return edge
+
+
 def heatmap_modelweights(model, figsize=(12,8), vmin=0.005, vmax=0.002):
     fnn_weight, gnn_weight = {}, {}
     for x in model.encoder.state_dict().keys():
@@ -245,6 +359,7 @@ def heatmap_modelweights(model, figsize=(12,8), vmin=0.005, vmax=0.002):
     plt.xticks(fontsize=16)
     plt.show()
     plt.close()
+
 
 def describe_dataset(data, nodes, edges, edge_symbols, conf):
 
@@ -335,7 +450,7 @@ def train(
         feat["src_feat_init"] = feat["{}_feat".format(src_symbol)].clone()
     if conf.target_node in embsymbol.keys():
         feat["tar_feat_init"] = feat["{}_feat".format(tar_symbol)].clone()
-
+    
     feat, pos_score, neg_score = model(feat, pos_edge_index, neg_edge_index)
     pos_target = torch.ones(pos_score.shape[0])
     neg_target = torch.zeros(neg_score.shape[0])
@@ -349,33 +464,66 @@ def train(
     )
     if conf.norm_lambda != 0:
         if conf.encoder_type in ["MIX", "NN"]:
-            l1_fnn = torch.sum(
-                Tensor(
-                    [
-                        torch.norm(
-                            model.encoder.net_encoder[key].fnn_layer[0].weight,
-                            conf.reg_type,
-                        )
-                        * conf.norm_lambda
-                        for key in model.encoder.net_encoder.keys()
-                    ]
+            if conf.reg_type in ["l1", "elastic"]:
+                l1_fnn = torch.sum(
+                    Tensor(
+                        [
+                            torch.norm(
+                                model.encoder.net_encoder[key].fnn_layer[0].weight,
+                                1,
+                            )
+                            * conf.norm_lambda
+                            for key in model.encoder.net_encoder.keys()
+                        ]
+                    )
                 )
-            )
-            loss += l1_fnn
+                loss += l1_fnn
+            
+            if conf.reg_type in ["l2", "elastic"]:
+                l2_fnn = torch.sum(
+                    Tensor(
+                        [
+                            torch.norm(
+                                model.encoder.net_encoder[key].fnn_layer[0].weight,
+                                2,
+                            )
+                            * conf.norm_lambda
+                            for key in model.encoder.net_encoder.keys()
+                        ]
+                    )
+                )
+                loss += l2_fnn
+                
         if conf.encoder_type in ["MIX", "GNN", "SKIP"]:
-            l1_gnn = torch.sum(
-                Tensor(
-                    [
-                        torch.norm(
-                            model.encoder.net_encoder[key].gnn_layer.weight,
-                            conf.reg_type,
-                        )
-                        * conf.norm_lambda
-                        for key in model.encoder.net_encoder.keys()
-                    ]
+            if conf.reg_type in ["l1", "elastic"]:
+                l1_gnn = torch.sum(
+                    Tensor(
+                        [
+                            torch.norm(
+                                model.encoder.net_encoder[key].gnn_layer.weight,
+                                1,
+                            )
+                            * conf.norm_lambda
+                            for key in model.encoder.net_encoder.keys()
+                        ]
+                    )
                 )
-            )
-            loss += l1_gnn
+                loss += l1_gnn
+            
+            if conf.reg_type in ["l2", "elastic"]:
+                l2_gnn = torch.sum(
+                    Tensor(
+                        [
+                            torch.norm(
+                                model.encoder.net_encoder[key].gnn_layer.weight,
+                                2,
+                            )
+                            * conf.norm_lambda
+                            for key in model.encoder.net_encoder.keys()
+                        ]
+                    )
+                )
+                loss += l2_gnn            
 
     if conf.emb_loss == "cos":
         cosemb_loss = CosineEmbeddingLoss()
@@ -461,33 +609,66 @@ def valid_and_test(
 
     if conf.norm_lambda != 0:
         if conf.encoder_type in ["MIX", "NN"]:
-            l1_fnn = torch.sum(
-                Tensor(
-                    [
-                        torch.norm(
-                            model.encoder.net_encoder[key].fnn_layer[0].weight,
-                            conf.reg_type,
-                        )
-                        * conf.norm_lambda
-                        for key in model.encoder.net_encoder.keys()
-                    ]
+            if conf.reg_type in ["l1", "elastic"]:
+                l1_fnn = torch.sum(
+                    Tensor(
+                        [
+                            torch.norm(
+                                model.encoder.net_encoder[key].fnn_layer[0].weight,
+                                1,
+                            )
+                            * conf.norm_lambda
+                            for key in model.encoder.net_encoder.keys()
+                        ]
+                    )
                 )
-            )
-            loss += l1_fnn
+                loss += l1_fnn
+            
+            if conf.reg_type in ["l2", "elastic"]:
+                l2_fnn = torch.sum(
+                    Tensor(
+                        [
+                            torch.norm(
+                                model.encoder.net_encoder[key].fnn_layer[0].weight,
+                                2,
+                            )
+                            * conf.norm_lambda
+                            for key in model.encoder.net_encoder.keys()
+                        ]
+                    )
+                )
+                loss += l2_fnn
+                
         if conf.encoder_type in ["MIX", "GNN", "SKIP"]:
-            l1_gnn = torch.sum(
-                Tensor(
-                    [
-                        torch.norm(
-                            model.encoder.net_encoder[key].gnn_layer.weight,
-                            conf.reg_type,
-                        )
-                        * conf.norm_lambda
-                        for key in model.encoder.net_encoder.keys()
-                    ]
+            if conf.reg_type in ["l1", "elastic"]:
+                l1_gnn = torch.sum(
+                    Tensor(
+                        [
+                            torch.norm(
+                                model.encoder.net_encoder[key].gnn_layer.weight,
+                                1,
+                            )
+                            * conf.norm_lambda
+                            for key in model.encoder.net_encoder.keys()
+                        ]
+                    )
                 )
-            )
-            loss += l1_gnn
+                loss += l1_gnn
+            
+            if conf.reg_type in ["l2", "elastic"]:
+                l2_gnn = torch.sum(
+                    Tensor(
+                        [
+                            torch.norm(
+                                model.encoder.net_encoder[key].gnn_layer.weight,
+                                2,
+                            )
+                            * conf.norm_lambda
+                            for key in model.encoder.net_encoder.keys()
+                        ]
+                    )
+                )
+                loss += l2_gnn          
 
     if conf.emb_loss == "cos":
         cosemb_loss = CosineEmbeddingLoss()
