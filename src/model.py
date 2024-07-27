@@ -160,10 +160,10 @@ class MyDecoder(nn.Module):
         super(MyDecoder, self).__init__()
         self.device = conf.device
 
-        if conf.dec_type == "CAT" or conf.dec_type == "MUL":
-            self.decoder = MLPDecoder(conf.dec_type, conf.emb_dim, conf.dropout_ratio)
-        elif conf.dec_type == "IPD":
-            self.decoder = IPDDecoder(conf.emb_dim, weighted=False)
+        if conf.decoder_type == "CAT" or conf.decoder_type == "MUL":
+            self.decoder = MLPDecoder(conf.decoder_type, conf.emb_dim, conf.dropout_ratio)
+        elif conf.decoder_type == "IPD":
+            self.decoder = IPDDecoder(conf.decoder_type, conf.emb_dim)
         else:
             raise Exception("Decoder type error")
 
