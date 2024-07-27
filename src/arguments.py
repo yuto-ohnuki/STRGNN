@@ -85,6 +85,10 @@ def check_and_update_args(args):
     ]
     assert args.target_network not in args.network_order
 
+    # result
+    print('Args')
+    for key,value in vars(args).items():
+        print("{}:{}".format(key, value))
 
 def main():
     args = get_args()
