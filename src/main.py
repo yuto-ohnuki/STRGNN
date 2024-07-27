@@ -20,6 +20,7 @@ from metrics import *
 from layer import *
 from model import *
 
+pd.options.display.float_format = '{:.4f}'.format
 
 def main():
     cur_path = os.getcwd()
@@ -361,9 +362,7 @@ def main():
     ### results
     ############################################################
     
-    epochs = [i for i in range(1, conf.epoch_num+1)]
-    train_indexes, train_aurocs, train_auprcs, train_accs = get_record(train_records, conf)
-    valid_indexes, valid_aurocs, valid_auprcs, valid_accs = get_record(valid_records, conf)
+    show_results(train_records, valid_records, best_records, conf)
 
 
 if __name__ == "__main__":
