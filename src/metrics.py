@@ -91,17 +91,20 @@ def show_results(train_record, valid_record, best_record, conf):
     
     ret = pd.DataFrame(ret)
     ret.index.name = "CV"
-    display(ret)
+    # display(ret)
+    print(ret.to_string())
     
     # Test performance
     best_cv = np.argmax(ret_valid_auprcs)
     result = best_record[best_cv][-1]
     
-    print("\tTest:")
+    print("\nTest:")
     perf = {
         "Test: AUROC": np.array(result["AUROC"]),
         "Test: AUPRC": np.array(result['AUPRC']),
         "Test: ACC": np.array(result["ACC"])
     }
     perf = pd.DataFrame(perf, index=[0])
-    display(perf)
+    # display(perf)
+    print(perf.to_string(index=False))
+    print(line)
