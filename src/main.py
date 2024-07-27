@@ -362,8 +362,10 @@ def main():
     ############################################################
     
     epochs = [i for i in range(1, conf.epoch_num+1)]
-    train_aurocs, train_auprcs, train_accs = get_record(train_records)
-    valid_aurocs, valid_auprcs, valid_accs = get_record(valid_records)
+    train_aurocs, train_auprcs, train_accs = get_record(train_records, conf)
+    valid_aurocs, valid_auprcs, valid_accs = get_record(valid_records, conf)
+
+    
 
 
     
