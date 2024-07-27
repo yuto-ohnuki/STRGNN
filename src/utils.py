@@ -701,3 +701,15 @@ def valid_and_test(
     loss = loss.item()
 
     return loss, metrics
+
+
+def get_record(record, conf):
+    ret_indexes, ret_aurocs, ret_auprcs, ret_accs = [], [], [], []
+    for cv in range(conf.cv):
+        cv_record = np.array(record[cv]).T
+        best_index = np.argmax(cv_record)
+        ret_indexes.append(best_index)
+        ret_aurocs.append(cv_record[0][best_index])
+        ret_auprcs.append(cv_record[1][best_index])
+        ret_accs.append(cv_record[2][best_index])
+    return ret_indexes, ret_aurocs, ret_auprcs, ret_accs
