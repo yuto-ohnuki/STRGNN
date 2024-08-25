@@ -72,5 +72,8 @@ Options are: <br>
 # Citing
 If you use STRGNN or our dataset, please cite our paper.
 
+
+> Ohnuki, Y., Akiyama, M. & Sakakibara, Y. Deep learning of multimodal networks with topological regularization for drug repositioning. J Cheminform 16, 103 (2024). https://doi.org/10.1186/s13321-024-00897-y
+
 # Contacts
 Please contact me at yuuto.0902@dna.bio.keio.ac.jp for any questions or comments.
